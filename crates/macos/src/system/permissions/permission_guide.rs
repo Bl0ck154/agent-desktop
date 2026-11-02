@@ -298,7 +298,7 @@ mod tests {
         let npm = directory.join("agent-desktop");
         std::fs::write(&actual, b"executable").unwrap();
         std::os::unix::fs::symlink(&actual, &npm).unwrap();
-        assert_eq!(guide_executable(&npm), actual);
+        assert_eq!(guide_executable(&npm), actual.canonicalize().unwrap());
         std::fs::remove_dir_all(directory).unwrap();
     }
 
