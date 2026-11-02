@@ -288,6 +288,11 @@ fn timeout_err(
         AdapterError::timeout(format!(
             "Event '{event}' did not occur within {timeout_ms}ms"
         ))
+        .with_suggestion(if event == "window-opened" {
+            "The window may have opened before this wait began. Run list-windows to inspect current windows, or use the action's --wait option to observe an opening during that action."
+        } else {
+            "The event may have occurred before this wait began. Inspect the current desktop state and start the next wait before triggering its event."
+        })
         .with_details(details),
     ))
 }
