@@ -16,11 +16,6 @@ const ACCESSIBILITY: u8 = 1;
 const SCREEN_RECORDING: u8 = 2;
 const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
 const MAX_ANCESTORS: usize = 64;
-const COMMAND_HOST_ENVS: [&str; 3] = [
-    "AGENT_DESKTOP_INTERNAL_COMMAND_HOST",
-    "AGENT_DESKTOP_INTERNAL_HOST_SOCKET",
-    "AGENT_DESKTOP_INTERNAL_HOST_CLIENT",
-];
 
 pub(crate) fn start() -> Result<&'static str, AdapterError> {
     let steps = missing_steps(
@@ -44,11 +39,8 @@ pub(crate) fn start() -> Result<&'static str, AdapterError> {
         AdapterError::internal("Could not locate the agent-desktop executable")
             .with_platform_detail(error.to_string())
     })?;
-    let host = host_app().unwrap_or_else(|| executable.clone());
+    let host = host_app().unwrap_or_else(|| guide_executable(&executable));
     let mut command = Command::new(&executable);
-    for name in COMMAND_HOST_ENVS {
-        command.env_remove(name);
-    }
     hand_over(&mut command, &lock);
     let mut child = command
         .env(STEPS_ENV, steps.to_string())
@@ -91,9 +83,12 @@ fn run_child(steps: &str) -> bool {
     unsafe { agent_desktop_permission_guide_run(steps, host.as_ptr(), granted) == 0 }
 }
 
-/// Each poll runs in a fresh process: a long-lived process keeps the Screen
-/// Recording answer it read at launch, and the command host may belong to
-/// another terminal app.
+fn guide_executable(executable: &Path) -> PathBuf {
+    std::fs::canonicalize(executable).unwrap_or_else(|_| executable.to_path_buf())
+}
+
+/// Each poll runs in a fresh process, because a long-lived process keeps the
+/// Screen Recording answer it read at launch.
 extern "C" fn granted(step: u8) -> bool {
     let Ok(executable) = std::env::current_exe() else {
         return false;
@@ -281,6 +276,21 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(5));
         }
+    }
+
+    #[test]
+    fn the_guide_resolves_npm_executable_symlinks_for_tcc_permissions() {
+        let directory = std::env::temp_dir().join(format!(
+            "agent-desktop-guide-exe-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let actual = directory.join("agent-desktop-native");
+        let npm = directory.join("agent-desktop");
+        std::fs::write(&actual, b"executable").unwrap();
+        std::os::unix::fs::symlink(&actual, &npm).unwrap();
+        assert_eq!(guide_executable(&npm), actual.canonicalize().unwrap());
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
